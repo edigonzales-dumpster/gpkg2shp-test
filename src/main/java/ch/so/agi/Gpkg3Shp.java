@@ -14,7 +14,6 @@ import ch.interlis.iox.ObjectEvent;
 import ch.interlis.iox_j.EndBasketEvent;
 import ch.interlis.iox_j.EndTransferEvent;
 import ch.interlis.ioxwkf.gpkg.GeoPackageReader;
-import ch.interlis.ioxwkf.shp.ShapeReader;
 import ch.interlis.ioxwkf.shp.ShapeWriter;
 
 public class Gpkg3Shp {
@@ -30,7 +29,6 @@ public class Gpkg3Shp {
         log.info("tmpFolder {}", tmpFolder.getAbsolutePath());
 
         Settings settings = new Settings();
-        settings.setValue(ShapeReader.SRS_ID, "2056");
         ShapeWriter writer = new ShapeWriter(new File("/Users/stefan/tmp/"+tableName+".shp"), settings);
         writer.setDefaultSridCode("2056");
         
