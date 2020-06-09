@@ -8,7 +8,7 @@ public class App {
     public static void main(String[] args) throws IOException, IoxException {
 
         Gpkg3Shp gpkg3shp = new Gpkg3Shp();
-        gpkg3shp.convert("./src/test/data/2581.gpkg", "nutzungsplanung_grundnutzung");
+        gpkg3shp.convert("./src/test/data/2502.gpkg", "nutzungsplanung_grundnutzung");
         
         
         
