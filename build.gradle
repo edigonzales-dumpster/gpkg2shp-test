@@ -22,16 +22,12 @@ repositories {
 dependencies {
     implementation 'org.slf4j:slf4j-api:1.7.25'
     implementation 'org.slf4j:slf4j-simple:1.7.25'
-
-    implementation ('ch.interlis:iox-wkf:1.1.0-SNAPSHOT') { changing = true }
-    
-
-    //implementation "org.geotools:gt-main:${geotoolsVersion}"
-    //implementation "org.geotools:gt-geopkg:${geotoolsVersion}"
-    //implementation "org.geotools:gt-shapefile:${geotoolsVersion}"
-    //implementation "org.geotools:gt-epsg-hsql:${geotoolsVersion}"
-    
-    implementation 'com.google.guava:guava:28.2-jre'
+    implementation ('ch.interlis:iox-wkf:1.1.0-SNAPSHOT') { 
+        changing = true 
+        exclude group: 'javax.media', module: 'jai-core'
+        exclude group: 'com.sun.media', module: 'jai-codec'
+    }
+    runtimeOnly 'org.xerial:sqlite-jdbc:3.21.0.1'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.6.0'
 }
