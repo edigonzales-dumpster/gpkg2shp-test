@@ -85,6 +85,5 @@ public class Gpkg3Shp {
         ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFileName));
         Files.walkFileTree(tmpFolder.toPath(), new ZipDir(tmpFolder.toPath(), zos));
         zos.close();
-        
     }
 }
