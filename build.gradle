@@ -9,10 +9,15 @@ ext {
 
 configurations.all {
     resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+    resolutionStrategy { 
+        force 'ch.interlis:iox-ili:1.21.0'
+    }
+    
 }
 
 repositories {
-    mavenLocal()
+    //mavenLocal()
+    maven { url "https://dl.bintray.com/sogis/iox-wkf/" }
     maven { url "https://repo.osgeo.org/repository/release/" }
     maven { url "http://jars.interlis.ch" }
     jcenter()
@@ -22,11 +27,13 @@ repositories {
 dependencies {
     implementation 'org.slf4j:slf4j-api:1.7.25'
     implementation 'org.slf4j:slf4j-simple:1.7.25'
-    implementation ('ch.interlis:iox-wkf:1.1.0-SNAPSHOT') { 
+    implementation ('ch.interlis:iox-wkf:1.1.20') { 
         changing = true 
         exclude group: 'javax.media', module: 'jai-core'
         exclude group: 'com.sun.media', module: 'jai-codec'
     }
+    implementation 'ch.interlis:av2geobau:1.0.2-SNAPSHOT'
+    
     runtimeOnly 'org.xerial:sqlite-jdbc:3.21.0.1'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.6.0'
