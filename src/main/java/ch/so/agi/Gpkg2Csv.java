@@ -18,6 +18,10 @@ public class Gpkg2Csv {
             tmpFolder.mkdirs();
         }
         log.info("tmpFolder {}", tmpFolder.getAbsolutePath());
+        
+        
+        // Geometrie-Konversion hier machen und zu WKT (ist dann String für CSVWriter) konvertieren.
+        // Wie komme ich an die Geometrie-Spalte? -> Siehe DXF.
 
     }
 }
