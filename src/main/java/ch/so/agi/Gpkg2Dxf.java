@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.interlis2.av2geobau.impl.DxfUtil;
+import org.interlis2.av2geobau.impl.DxfWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +30,7 @@ import ch.interlis.ioxwkf.gpkg.GeoPackageReader;
 public class Gpkg2Dxf {
     Logger log = LoggerFactory.getLogger(Gpkg2Dxf.class);
 
-    public void convert(String fileName) throws IOException, IoxException {
+    public void convert(String fileName) throws Exception {
         File tmpFolder = Files.createTempDirectory("gpkgws-").toFile();
         if (!tmpFolder.exists()) {
             tmpFolder.mkdirs();
@@ -68,6 +69,11 @@ public class Gpkg2Dxf {
                 
                 ObjectEvent iomObj = (ObjectEvent) event;
                 log.info(iomObj.getIomObject().toString());
+                
+                String dxfFragment = DxfWriter.feature2Dxf(iomObj.getIomObject());
+                log.info(dxfFragment);
+                
+                
             }
             event = reader.read();
             //log.info(event.toString());
