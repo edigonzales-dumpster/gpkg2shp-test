@@ -22,7 +22,11 @@ public class ZipDir extends SimpleFileVisitor<Path> {
     @Override
     public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
         String filePath = file.toFile().getAbsolutePath();
-        if (filePath.endsWith(".shp") || filePath.endsWith(".shx") || filePath.endsWith(".dbf") || filePath.endsWith(".prj")) {
+        if (filePath.endsWith(".shp") 
+                || filePath.endsWith(".shx") 
+                || filePath.endsWith(".dbf") 
+                || filePath.endsWith(".prj")
+                || filePath.endsWith(".dxf")) {
             try {
                 Path targetFile = sourceDir.relativize(file);
                 zos.putNextEntry(new ZipEntry(targetFile.toString()));

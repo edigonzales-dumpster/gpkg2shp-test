@@ -3,18 +3,17 @@ package ch.so.agi;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.zip.ZipOutputStream;
 
 import org.interlis2.av2geobau.impl.DxfUtil;
 import org.interlis2.av2geobau.impl.DxfWriter;
@@ -27,10 +26,7 @@ import com.vividsolutions.jts.geom.Polygon;
 import ch.interlis.iom.IomObject;
 import ch.interlis.iom_j.Iom_jObject;
 import ch.interlis.iox.IoxEvent;
-import ch.interlis.iox.IoxException;
 import ch.interlis.iox.ObjectEvent;
-import ch.interlis.iox_j.EndBasketEvent;
-import ch.interlis.iox_j.EndTransferEvent;
 import ch.interlis.iox_j.jts.Iox2jts;
 import ch.interlis.iox_j.jts.Jts2iox;
 import ch.interlis.ioxwkf.gpkg.GeoPackageReader;
@@ -46,22 +42,39 @@ public class Gpkg2Dxf {
         log.info("tmpFolder {}", tmpFolder.getAbsolutePath());
         
         String sql = "SELECT \n" + 
-                "    table_prop.tablename, gpkg_geometry_columns.column_name  \n" + 
+                "    table_prop.tablename, \n" + 
+                "    gpkg_geometry_columns.column_name,\n" + 
+                "    gpkg_geometry_columns.srs_id AS crs,\n" + 
+                "    classname.IliName AS classname,\n" + 
+                "    attrname.SqlName AS dxf_layer_attr\n" + 
                 "FROM \n" + 
                 "    T_ILI2DB_TABLE_PROP AS table_prop\n" + 
-                "    LEFT JOIN gpkg_geometry_columns \n" + 
-                "    ON table_prop.tablename = gpkg_geometry_columns.table_name \n" + 
-                "WHERE \n" + 
+                "    LEFT JOIN gpkg_geometry_columns\n" + 
+                "    ON table_prop.tablename = gpkg_geometry_columns.table_name\n" + 
+                "    LEFT JOIN T_ILI2DB_CLASSNAME AS classname\n" + 
+                "    ON table_prop.tablename = classname.SqlName \n" + 
+                "    LEFT JOIN ( SELECT ilielement, attr_name, attr_value FROM T_ILI2DB_META_ATTRS WHERE attr_name = 'dxflayer' ) AS meta_attrs \n" + 
+                "    ON instr(meta_attrs.ilielement, classname) > 0\n" + 
+                "    LEFT JOIN T_ILI2DB_ATTRNAME AS attrname \n" + 
+                "    ON meta_attrs.ilielement = attrname.IliName \n" + 
+                "WHERE\n" + 
                 "    setting = 'CLASS'\n" + 
-                "AND \n" + 
+                "    AND \n" + 
                 "    column_name IS NOT NULL";
         
-        Map<String,String> tableNames = new HashMap<String,String>();
+        List<DxfLayerInfo> dxfLayers = new ArrayList<DxfLayerInfo>();
         String url = "jdbc:sqlite:" + fileName;
         try (Connection conn = DriverManager.getConnection(url); Statement stmt = conn.createStatement()) {
             try (ResultSet rs = stmt.executeQuery(sql)) {
                 while(rs.next()) {
-                    tableNames.put(rs.getString("tablename"), rs.getString("column_name"));
+                    DxfLayerInfo dxfLayerInfo = new DxfLayerInfo();
+                    dxfLayerInfo.setTableName(rs.getString("tablename"));
+                    dxfLayerInfo.setGeomColumnName(rs.getString("column_name"));
+                    dxfLayerInfo.setCrs(rs.getInt("crs"));
+                    dxfLayerInfo.setClassName(rs.getString("classname"));
+                    dxfLayerInfo.setDxfLayerAttr(rs.getString("dxf_layer_attr"));
+                    dxfLayers.add(dxfLayerInfo);
+                    log.info(dxfLayerInfo.getTableName());
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
@@ -70,55 +83,76 @@ public class Gpkg2Dxf {
         } catch (SQLException e) {
             throw new IllegalArgumentException(e.getMessage());
         }
-        
-        java.io.Writer fw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("/Users/stefan/tmp/fubar.dxf"), "ISO-8859-1")); 
-        
-        try {
-            fw.write(DxfUtil.toString(0, "SECTION"));
-            fw.write(DxfUtil.toString(2, "ENTITIES"));
+                
+        for (DxfLayerInfo dxfLayerInfo : dxfLayers) {
+            String tableName = dxfLayerInfo.getTableName();
+            String geomColumnName = dxfLayerInfo.getGeomColumnName();
+            int crs = dxfLayerInfo.getCrs();
+            String dxfLayerAttr = dxfLayerInfo.getDxfLayerAttr();
             
-            GeoPackageReader reader = new GeoPackageReader(new File(fileName), "nachfuehrngskrise_gemeinde");        
-            IoxEvent event = reader.read();
-            while (event instanceof IoxEvent) {
-                if (event instanceof ObjectEvent) {                
-                    ObjectEvent iomObjEvent = (ObjectEvent) event;
-                    IomObject iomObj = iomObjEvent.getIomObject();
-                    
-                    String layer = "fubarlayer";
-                    IomObject geom = iomObj.getattrobj("perimeter", 0);
-                    
-                    // TODO crs aus gpkg
-                    // Es kann im Geopackage eine Multisurface vorhanden sein, die
-                    // im DxfWriter Probleme macht. Dort wird Iox2jtsext.surface2JTS() 
-                    // verwendet.
-                    MultiPolygon multipoly = Iox2jts.multisurface2JTS(geom, 0, 2056);                
-                    for (int i=0; i<multipoly.getNumGeometries(); i++) {
-                        IomObject dxfObj = new Iom_jObject(DxfWriter.IOM_2D_POLYGON, null);
-                        dxfObj.setobjectoid(iomObj.getobjectoid());
-                        dxfObj.setattrvalue(DxfWriter.IOM_ATTR_LAYERNAME, layer);
+            String dxfFileName = Paths.get(tmpFolder.getAbsolutePath(), tableName + ".dxf").toFile().getAbsolutePath();
+            java.io.Writer fw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(dxfFileName), "ISO-8859-1")); 
+            log.info("dxfFile: " + dxfFileName);
+            
+            try {
+                fw.write(DxfUtil.toString(0, "SECTION"));
+                fw.write(DxfUtil.toString(2, "ENTITIES"));
+                
+                GeoPackageReader reader = new GeoPackageReader(new File(fileName), tableName);        
+                IoxEvent event = reader.read();
+                while (event instanceof IoxEvent) {
+                    if (event instanceof ObjectEvent) {                
+                        ObjectEvent iomObjEvent = (ObjectEvent) event;
+                        IomObject iomObj = iomObjEvent.getIomObject();
                         
-                        Polygon poly = (Polygon) multipoly.getGeometryN(i);
-                        IomObject surface = Jts2iox.JTS2surface(poly);
-                        dxfObj.addattrobj(DxfWriter.IOM_ATTR_GEOM, surface);
-                        String dxfFragment = DxfWriter.feature2Dxf(dxfObj);
-                        fw.write(dxfFragment);
+                        String layer;
+                        if (dxfLayerAttr != null) {
+                            layer = iomObj.getattrvalue(dxfLayerAttr);
+                            layer = layer.replaceAll("\\s+","");
+                        } else {
+                            layer = "default";
+                        }
+                        IomObject geom = iomObj.getattrobj(geomColumnName, 0);
+                        
+                        // Es kann im Geopackage eine Multisurface vorhanden sein. Diese
+                        // macht im DxfWriter Probleme, weil Iox2jtsext.surface2JTS() 
+                        // verwendet wird (und nicht multisurface2JTS).
+                        MultiPolygon multipoly = Iox2jts.multisurface2JTS(geom, 0, crs);                
+                        for (int i=0; i<multipoly.getNumGeometries(); i++) {
+                            IomObject dxfObj = new Iom_jObject(DxfWriter.IOM_2D_POLYGON, null);
+                            dxfObj.setobjectoid(iomObj.getobjectoid());
+                            dxfObj.setattrvalue(DxfWriter.IOM_ATTR_LAYERNAME, layer);
+                            
+                            Polygon poly = (Polygon) multipoly.getGeometryN(i);
+                            IomObject surface = Jts2iox.JTS2surface(poly);
+                            dxfObj.addattrobj(DxfWriter.IOM_ATTR_GEOM, surface);
+                            String dxfFragment = DxfWriter.feature2Dxf(dxfObj);
+                            fw.write(dxfFragment);
+                        }
                     }
+                    event = reader.read();
                 }
-                event = reader.read();
-            }
-                        
-            if (reader != null) {
-                reader.close();
-                reader = null;
-            }
+                            
+                if (reader != null) {
+                    reader.close();
+                    reader = null;
+                }
 
-            fw.write(DxfUtil.toString(0, "ENDSEC"));
-            fw.write(DxfUtil.toString(0, "EOF"));
-        } finally{
-            if(fw != null) {
-                fw.close();
-                fw=null;
-            }
+                fw.write(DxfUtil.toString(0, "ENDSEC"));
+                fw.write(DxfUtil.toString(0, "EOF"));
+            } finally{
+                if(fw != null) {
+                    fw.close();
+                    fw=null;
+                }
+            }            
         }
+        
+        String zipFileName = Paths.get(tmpFolder.getAbsolutePath(), new File(fileName).getName().substring(0, new File(fileName).getName().lastIndexOf(".")) + ".dxf.zip").toFile().getAbsolutePath();
+        log.info(zipFileName);
+        
+        ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFileName));
+        Files.walkFileTree(tmpFolder.toPath(), new ZipDir(tmpFolder.toPath(), zos));
+        zos.close();
     }
 }
