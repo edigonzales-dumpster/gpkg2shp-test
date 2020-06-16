@@ -6,7 +6,7 @@ SELECT
     gpkg_geometry_columns.column_name,
     gpkg_geometry_columns.srs_id AS crs,
     classname.IliName AS classname,
-    attrname.SqlName AS dxf_layer_name
+    attrname.SqlName AS dxf_layer_attr
 FROM 
     T_ILI2DB_TABLE_PROP AS table_prop
     LEFT JOIN gpkg_geometry_columns
@@ -23,7 +23,7 @@ WHERE
     column_name IS NOT NULL
 
 
-    
+
 SELECT 
     table_prop.tablename, 
     gpkg_geometry_columns.column_name,
