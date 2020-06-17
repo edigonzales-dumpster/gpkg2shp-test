@@ -9,9 +9,12 @@ public class App {
         //Gpkg3Shp gpkg3shp = new Gpkg3Shp();
         //gpkg3shp.convert("./src/test/data/ch.so.agi.av-gb-administrative-einteilung.gpkg");
         
-        Gpkg2Csv gpkg2cvs = new Gpkg2Csv();
-        gpkg2cvs.convert("./src/test/data/ch.so.agi.av-gb-administrative-einteilung.gpkg");
+//        Gpkg2Csv gpkg2cvs = new Gpkg2Csv();
+//        gpkg2cvs.convert("./src/test/data/ch.so.agi.av-gb-administrative-einteilung.gpkg");
         
+        Gpkg2Dxf gpkg2dxf = new Gpkg2Dxf();
+        gpkg2dxf.convert("./src/test/data/ch.so.agi.av-gb-administrative-einteilung.gpkg");
+
 
         System.out.println("Hallo Welt.");
     }

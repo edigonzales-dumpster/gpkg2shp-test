@@ -120,6 +120,10 @@ public class Gpkg2Dxf {
                         
                         // TODO: Hier braucht es noch mehr... Es gibt ja schliesslich
                         // auch andere Geometrytypen wie Linien und Punkte.
+                        // Nicht sicher, ob das funktioniert und implizit gecastet wird.
+                        // Schätzung nein. -> sauber je Geometrytyp machen (also Multi
+                        // und Single). Testen mit ein paar NPLSO-Tabellen? Die sollten
+                        // Single sein!?
                         Geometry jtsGeom;
                         if (geometryTypeName.toLowerCase().contains("polygon")) {
                             jtsGeom = Iox2jts.multisurface2JTS(iomGeom, 0, crs);
