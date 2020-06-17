@@ -20,6 +20,7 @@ import org.interlis2.av2geobau.impl.DxfWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.MultiPolygon;
 import com.vividsolutions.jts.geom.Polygon;
 
@@ -45,6 +46,7 @@ public class Gpkg2Dxf {
                 "    table_prop.tablename, \n" + 
                 "    gpkg_geometry_columns.column_name,\n" + 
                 "    gpkg_geometry_columns.srs_id AS crs,\n" + 
+                "    gpkg_geometry_columns.geometry_type_name AS geometry_type_name,\n" + 
                 "    classname.IliName AS classname,\n" + 
                 "    attrname.SqlName AS dxf_layer_attr\n" + 
                 "FROM \n" + 
@@ -71,6 +73,7 @@ public class Gpkg2Dxf {
                     dxfLayerInfo.setTableName(rs.getString("tablename"));
                     dxfLayerInfo.setGeomColumnName(rs.getString("column_name"));
                     dxfLayerInfo.setCrs(rs.getInt("crs"));
+                    dxfLayerInfo.setGeometryTypeName(rs.getString("geometry_type_name"));
                     dxfLayerInfo.setClassName(rs.getString("classname"));
                     dxfLayerInfo.setDxfLayerAttr(rs.getString("dxf_layer_attr"));
                     dxfLayers.add(dxfLayerInfo);
@@ -88,6 +91,7 @@ public class Gpkg2Dxf {
             String tableName = dxfLayerInfo.getTableName();
             String geomColumnName = dxfLayerInfo.getGeomColumnName();
             int crs = dxfLayerInfo.getCrs();
+            String geometryTypeName = dxfLayerInfo.getGeometryTypeName();
             String dxfLayerAttr = dxfLayerInfo.getDxfLayerAttr();
             
             String dxfFileName = Paths.get(tmpFolder.getAbsolutePath(), tableName + ".dxf").toFile().getAbsolutePath();
@@ -112,12 +116,27 @@ public class Gpkg2Dxf {
                         } else {
                             layer = "default";
                         }
-                        IomObject geom = iomObj.getattrobj(geomColumnName, 0);
+                        IomObject iomGeom = iomObj.getattrobj(geomColumnName, 0);
+                        
+                        // TODO: Hier braucht es noch mehr... Es gibt ja schliesslich
+                        // auch andere Geometrytypen wie Linien und Punkte.
+                        Geometry jtsGeom;
+                        if (geometryTypeName.toLowerCase().contains("polygon")) {
+                            jtsGeom = Iox2jts.multisurface2JTS(iomGeom, 0, crs);
+                        } else if (geometryTypeName.toLowerCase().contains("linestring")) {
+                            jtsGeom = Iox2jts.multipolyline2JTS(iomGeom, 0);
+                        } else if (geometryTypeName.toLowerCase().contains("point")) {
+                            jtsGeom = Iox2jts.multicoord2JTS(iomGeom);
+                        } else {
+                            continue;
+                        }
+                        
+                        
                         
                         // Es kann im Geopackage eine Multisurface vorhanden sein. Diese
                         // macht im DxfWriter Probleme, weil Iox2jtsext.surface2JTS() 
                         // verwendet wird (und nicht multisurface2JTS).
-                        MultiPolygon multipoly = Iox2jts.multisurface2JTS(geom, 0, crs);                
+                        MultiPolygon multipoly = Iox2jts.multisurface2JTS(iomGeom, 0, crs);                
                         for (int i=0; i<multipoly.getNumGeometries(); i++) {
                             IomObject dxfObj = new Iom_jObject(DxfWriter.IOM_2D_POLYGON, null);
                             dxfObj.setobjectoid(iomObj.getobjectoid());

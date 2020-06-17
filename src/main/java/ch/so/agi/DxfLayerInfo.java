@@ -7,6 +7,8 @@ public class DxfLayerInfo {
     
     private int crs;
     
+    private String geometryTypeName;
+    
     private String className;
     
     private String dxfLayerAttr;
@@ -33,6 +35,14 @@ public class DxfLayerInfo {
 
     public void setCrs(int crs) {
         this.crs = crs;
+    }
+
+    public String getGeometryTypeName() {
+        return geometryTypeName;
+    }
+
+    public void setGeometryTypeName(String geometryTypeName) {
+        this.geometryTypeName = geometryTypeName;
     }
 
     public String getClassName() {
