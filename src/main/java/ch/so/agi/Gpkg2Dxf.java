@@ -3,6 +3,7 @@ package ch.so.agi;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -20,8 +21,13 @@ import org.interlis2.av2geobau.impl.DxfWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.vividsolutions.jts.geom.Coordinate;
+import com.vividsolutions.jts.geom.CoordinateList;
 import com.vividsolutions.jts.geom.Geometry;
+import com.vividsolutions.jts.geom.GeometryFactory;
+import com.vividsolutions.jts.geom.LineString;
 import com.vividsolutions.jts.geom.MultiPolygon;
+import com.vividsolutions.jts.geom.Point;
 import com.vividsolutions.jts.geom.Polygon;
 
 import ch.interlis.iom.IomObject;
@@ -34,6 +40,12 @@ import ch.interlis.ioxwkf.gpkg.GeoPackageReader;
 
 public class Gpkg2Dxf {
     Logger log = LoggerFactory.getLogger(Gpkg2Dxf.class);
+
+    private static final String COORD="COORD";
+    private static final String MULTICOORD="MULTICOORD";
+    private static final String POLYLINE="POLYLINE";
+    private static final String MULTIPOLYLINE="MULTIPOLYLINE";
+    private static final String MULTISURFACE="MULTISURFACE";
 
     public void convert(String fileName) throws Exception {
         File tmpFolder = Files.createTempDirectory("gpkgws-").toFile();
@@ -86,7 +98,9 @@ public class Gpkg2Dxf {
         } catch (SQLException e) {
             throw new IllegalArgumentException(e.getMessage());
         }
-                
+               
+        GeometryFactory geometryFactory = new GeometryFactory();
+
         for (DxfLayerInfo dxfLayerInfo : dxfLayers) {
             String tableName = dxfLayerInfo.getTableName();
             String geomColumnName = dxfLayerInfo.getGeomColumnName();
@@ -99,6 +113,7 @@ public class Gpkg2Dxf {
             log.info("dxfFile: " + dxfFileName);
             
             try {
+                writeBlocks(fw);
                 fw.write(DxfUtil.toString(0, "SECTION"));
                 fw.write(DxfUtil.toString(2, "ENTITIES"));
                 
@@ -117,40 +132,79 @@ public class Gpkg2Dxf {
                             layer = "default";
                         }
                         IomObject iomGeom = iomObj.getattrobj(geomColumnName, 0);
-                        
-                        // TODO: Hier braucht es noch mehr... Es gibt ja schliesslich
-                        // auch andere Geometrytypen wie Linien und Punkte.
-                        // Nicht sicher, ob das funktioniert und implizit gecastet wird.
-                        // Schätzung nein. -> sauber je Geometrytyp machen (also Multi
-                        // und Single). Testen mit ein paar NPLSO-Tabellen? Die sollten
-                        // Single sein!?
+                                                
                         Geometry jtsGeom;
-                        if (geometryTypeName.toLowerCase().contains("polygon")) {
+                        if (iomGeom.getobjecttag().equals(MULTISURFACE)) {
                             jtsGeom = Iox2jts.multisurface2JTS(iomGeom, 0, crs);
-                        } else if (geometryTypeName.toLowerCase().contains("linestring")) {
+                            
+                            for (int i=0; i<jtsGeom.getNumGeometries(); i++) {
+                                IomObject dxfObj = new Iom_jObject(DxfWriter.IOM_2D_POLYGON, null);
+                                dxfObj.setobjectoid(iomObj.getobjectoid());
+                                dxfObj.setattrvalue(DxfWriter.IOM_ATTR_LAYERNAME, layer);
+                                
+                                Polygon poly = (Polygon) jtsGeom.getGeometryN(i);
+                                IomObject surface = Jts2iox.JTS2surface(poly);
+                                dxfObj.addattrobj(DxfWriter.IOM_ATTR_GEOM, surface);
+                                String dxfFragment = DxfWriter.feature2Dxf(dxfObj);
+                                fw.write(dxfFragment);
+                            }
+                        } else if (iomGeom.getobjecttag().equals(MULTIPOLYLINE)) {
                             jtsGeom = Iox2jts.multipolyline2JTS(iomGeom, 0);
-                        } else if (geometryTypeName.toLowerCase().contains("point")) {
+                            
+                            for (int i=0; i<jtsGeom.getNumGeometries(); i++) {
+                                IomObject dxfObj = new Iom_jObject(DxfWriter.IOM_2D_POLYLINE, null);
+                                dxfObj.setobjectoid(iomObj.getobjectoid());
+                                dxfObj.setattrvalue(DxfWriter.IOM_ATTR_LAYERNAME, layer);
+                                
+                                LineString line = (LineString) jtsGeom.getGeometryN(i);
+                                IomObject polyline = Jts2iox.JTS2polyline(line);
+                                dxfObj.addattrobj(DxfWriter.IOM_ATTR_GEOM, polyline);
+                                String dxfFragment = DxfWriter.feature2Dxf(dxfObj);
+                                fw.write(dxfFragment);
+                            }                            
+                        } else if (iomGeom.getobjecttag().equals(MULTICOORD)) {
                             jtsGeom = Iox2jts.multicoord2JTS(iomGeom);
-                        } else {
-                            continue;
-                        }
-                        
-                        
-                        
-                        // Es kann im Geopackage eine Multisurface vorhanden sein. Diese
-                        // macht im DxfWriter Probleme, weil Iox2jtsext.surface2JTS() 
-                        // verwendet wird (und nicht multisurface2JTS).
-                        MultiPolygon multipoly = Iox2jts.multisurface2JTS(iomGeom, 0, crs);                
-                        for (int i=0; i<multipoly.getNumGeometries(); i++) {
-                            IomObject dxfObj = new Iom_jObject(DxfWriter.IOM_2D_POLYGON, null);
+                            
+                            for (int i=0; i<jtsGeom.getNumGeometries(); i++) {
+                                IomObject dxfObj = new Iom_jObject(DxfWriter.IOM_BLOCKINSERT, null);
+                                dxfObj.setobjectoid(iomObj.getobjectoid());
+                                dxfObj.setattrvalue(DxfWriter.IOM_ATTR_LAYERNAME, layer);
+                                
+                                Point point = (Point) jtsGeom.getGeometryN(i);
+                                IomObject coord = Jts2iox.JTS2coord(point.getCoordinate());
+                                dxfObj.addattrobj(DxfWriter.IOM_ATTR_GEOM, coord);
+                                String dxfFragment = DxfWriter.feature2Dxf(dxfObj);
+                                fw.write(dxfFragment);
+                            }                            
+                        } else if (iomGeom.getobjecttag().equals(POLYLINE)) {
+                            CoordinateList coordList = Iox2jts.polyline2JTS(iomGeom, false, 0);
+                            Coordinate[] coordArray = new Coordinate[coordList.size()];
+                            coordArray = (Coordinate[]) coordList.toArray(coordArray);
+                            jtsGeom = geometryFactory.createLineString(coordArray);
+                            
+                            IomObject dxfObj = new Iom_jObject(DxfWriter.IOM_2D_POLYLINE, null);
                             dxfObj.setobjectoid(iomObj.getobjectoid());
                             dxfObj.setattrvalue(DxfWriter.IOM_ATTR_LAYERNAME, layer);
-                            
-                            Polygon poly = (Polygon) multipoly.getGeometryN(i);
-                            IomObject surface = Jts2iox.JTS2surface(poly);
-                            dxfObj.addattrobj(DxfWriter.IOM_ATTR_GEOM, surface);
+
+                            IomObject polyline = Jts2iox.JTS2polyline((LineString)jtsGeom);
+                            dxfObj.addattrobj(DxfWriter.IOM_ATTR_GEOM, polyline);
                             String dxfFragment = DxfWriter.feature2Dxf(dxfObj);
                             fw.write(dxfFragment);
+                        } else if (iomGeom.getobjecttag().equals(COORD)) {
+                            Coordinate coord = Iox2jts.coord2JTS(iomGeom);
+                            jtsGeom = geometryFactory.createPoint(coord);
+                            
+                            IomObject dxfObj = new Iom_jObject(DxfWriter.IOM_BLOCKINSERT, null);
+                            dxfObj.setobjectoid(iomObj.getobjectoid());
+                            dxfObj.setattrvalue(DxfWriter.IOM_ATTR_LAYERNAME, layer);
+                            dxfObj.setattrvalue(DxfWriter.IOM_ATTR_BLOCK, "GPBOL");
+                            
+                            IomObject iomCoord = Jts2iox.JTS2coord(coord);
+                            dxfObj.addattrobj(DxfWriter.IOM_ATTR_GEOM, iomCoord);
+                            String dxfFragment = DxfWriter.feature2Dxf(dxfObj);
+                            fw.write(dxfFragment); 
+                        } else {
+                            continue;
                         }
                     }
                     event = reader.read();
@@ -177,5 +231,30 @@ public class Gpkg2Dxf {
         ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFileName));
         Files.walkFileTree(tmpFolder.toPath(), new ZipDir(tmpFolder.toPath(), zos));
         zos.close();
+    }
+    
+    private void writeBlocks(java.io.Writer fw) throws IOException { 
+        // BLOCK (Symbole)             
+        fw.write(DxfUtil.toString(0, "SECTION"));
+        fw.write(DxfUtil.toString(2, "BLOCKS"));
+        
+        // GP Bolzen                
+        fw.write(DxfUtil.toString(0, "BLOCK"));
+        fw.write(DxfUtil.toString(8, "0"));
+        fw.write(DxfUtil.toString(70, "0"));
+        fw.write(DxfUtil.toString(10, "0.0"));
+        fw.write(DxfUtil.toString(20, "0.0"));
+        fw.write(DxfUtil.toString(30, "0.0"));
+        fw.write(DxfUtil.toString(2, "GPBOL"));
+        fw.write(DxfUtil.toString(0, "CIRCLE"));
+        fw.write(DxfUtil.toString(8, "0"));
+        fw.write(DxfUtil.toString(10, "0.0"));
+        fw.write(DxfUtil.toString(20, "0.0"));
+        fw.write(DxfUtil.toString(30, "0.0"));
+        fw.write(DxfUtil.toString(40, "0.5"));
+        fw.write(DxfUtil.toString(0, "ENDBLK"));
+        fw.write(DxfUtil.toString(8, "0")); 
+
+        fw.write(DxfUtil.toString(0, "ENDSEC"));
     }
 }
