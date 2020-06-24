@@ -9,7 +9,9 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -33,7 +35,7 @@ import ch.interlis.iox_j.jts.Iox2jtsException;
 import ch.interlis.ioxwkf.gpkg.GeoPackageReader;
 
 public class Gpkg2Csv {
-    Logger log = LoggerFactory.getLogger(Gpkg2Dxf.class);
+    Logger log = LoggerFactory.getLogger(Gpkg2Csv.class);
 
     private static final String COORD="COORD";
     private static final String MULTICOORD="MULTICOORD";
@@ -49,34 +51,12 @@ public class Gpkg2Csv {
         log.info("tmpFolder {}", tmpFolder.getAbsolutePath());
         
         
-        String sql = "SELECT \n" + 
-                "    table_prop.tablename, \n" + 
-                "    gpkg_geometry_columns.column_name,\n" + 
-                "    gpkg_geometry_columns.srs_id AS crs,\n" + 
-                "    classname.IliName AS classname,\n" + 
-                "    attrname.SqlName AS dxf_layer_attr\n" + 
-                "FROM \n" + 
-                "    T_ILI2DB_TABLE_PROP AS table_prop\n" + 
-                "    LEFT JOIN gpkg_geometry_columns\n" + 
-                "    ON table_prop.tablename = gpkg_geometry_columns.table_name\n" + 
-                "    LEFT JOIN T_ILI2DB_CLASSNAME AS classname\n" + 
-                "    ON table_prop.tablename = classname.SqlName \n" + 
-                "    LEFT JOIN ( SELECT ilielement, attr_name, attr_value FROM T_ILI2DB_META_ATTRS WHERE attr_name = 'dxflayer' ) AS meta_attrs \n" + 
-                "    ON instr(meta_attrs.ilielement, classname) > 0\n" + 
-                "    LEFT JOIN T_ILI2DB_ATTRNAME AS attrname \n" + 
-                "    ON meta_attrs.ilielement = attrname.IliName \n" + 
-                "WHERE\n" + 
-                "    setting = 'CLASS'\n" + 
-                "    AND \n" + 
-                "    column_name IS NOT NULL";
-        
-        Map<String,String> layerMap = new HashMap<String,String>();
+        List<String> tableNames = new ArrayList<String>();
         String url = "jdbc:sqlite:" + fileName;
         try (Connection conn = DriverManager.getConnection(url); Statement stmt = conn.createStatement()) {
-            try (ResultSet rs = stmt.executeQuery(sql)) {
+            try (ResultSet rs = stmt.executeQuery("SELECT tablename FROM T_ILI2DB_TABLE_PROP WHERE setting = 'CLASS'")) {
                 while(rs.next()) {
-                    layerMap.put(rs.getString("tablename"), rs.getString("column_name"));
-                    log.info(layerMap.toString());
+                    tableNames.add(rs.getString("tablename"));
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
@@ -88,10 +68,7 @@ public class Gpkg2Csv {
 
         GeometryFactory geometryFactory = new GeometryFactory();
 
-        for (Map.Entry<String, String> entry : layerMap.entrySet()) {
-            String tableName = entry.getKey();
-            String geomColumnName = entry.getValue();
-
+        for (String tableName : tableNames) {
             CsvWriter writer = new CsvWriter(Paths.get(tmpFolder.getAbsolutePath(), tableName+".csv").toFile());
             GeoPackageReader reader = new GeoPackageReader(new File(fileName), tableName);  
             
